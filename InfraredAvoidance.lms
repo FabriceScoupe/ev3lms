@@ -1,0 +1,75 @@
+//
+// Simple random avoidance programme using IR sensor
+// -------------------------------------------------
+// Large motors on B and C
+// Infrared sensor on 4
+//
+
+vmthread main {
+    DATA32 timer
+
+    DATA8  percent1
+    DATA8  percent2
+
+    OUTPUT_SPEED(0, 6, 0) // 0x2 (B) | 0x4 (C) -> 0x6, 0%
+    OUTPUT_START(0, 6)    // Start both motors
+
+    start:
+        OUTPUT_SPEED(0, 6, 75)    // Both motors forward 75% speed
+        SOUND(TONE, 10, 880, 500) // A5 (880Hz) at 10% volume for 500 ms
+        // No SOUND_READY => don't wait until sound has finished.
+
+    check:
+        // Port 4 -> index 3, type 33==IR, mode 0==Proximity 
+        INPUT_READ(0, 3, 33, 0, percent1)
+
+        // if percent1 < 60% avoidance! 100% == no obstruction
+        JR_LT8(percent1, 60, avoidance)
+
+        // Re-check every 500 milliseconds
+        TIMER_WAIT(500, timer)
+        TIMER_READY(timer) // Wait until timer has finished.
+
+        JR(check)
+
+    avoidance:
+        // Robot backs up a bit, then
+        // it rotates left, takes an IR proximity measurement, then
+        // it rotates right, takes another measurement, then
+        // picks the best direction (less obstructed).
+
+        // 1- Reverse a bit
+        OUTPUT_SPEED(0, 6, -75) // Both motors back 75% speed
+
+        // Beep!
+        SOUND(TONE, 10, 440, 500) // A4 (440Hz) 10% volume for 500 ms
+        SOUND_READY // Not that while sound playing, motors are running.
+
+        // 2- Measure left
+        OUTPUT_SPEED(0, 2, -25) // Left wheel back 25% speed
+        OUTPUT_SPEED(0, 4, 25)  // Right wheel forward 25% speed
+        TIMER_WAIT(1000, timer) // 1s-timer
+        TIMER_READY(timer)
+
+        INPUT_READ(0, 3, 33, 0, percent1) // Left measurement
+
+        // 3- Measure right (remember, we're still rotated left here)
+        OUTPUT_SPEED(0, 2, 25)  // Left wheel forward 25% speed
+        OUTPUT_SPEED(0, 4, -25) // Right wheel back -25% speed
+        TIMER_WAIT(2000, timer) // 2s to go back to centre then right
+        TIMER_READY(timer)
+       
+        INPUT_READ(0, 3, 33, 0, percent2) // Right measurement
+
+        // 4- Pick the best direction (ie highest percentage)
+        // If it's right, we're already there, so go to start
+        // else rotate left twice: back to centre first!
+        JR_LT8(percent1, percent2, start)
+
+        // Going back all the way to the left
+        OUTPUT_SPEED(0, 2, -25)
+        OUTPUT_SPEED(0, 4, 25)
+        TIMER_WAIT(2000, timer) // 2s to go back to centre then left
+        TIMER_READY(timer)
+        JR(start)
+}
